@@ -2,6 +2,7 @@ import json
 import os
 import time
 import afdian
+from urllib.parse import unquote
 
 try:
     import requests
@@ -103,10 +104,19 @@ def order():
         back = {"code": 412, "error": "验证失败，请检查.env文件"}
         back = json.dumps(back, ensure_ascii=False)
         return Response(back, mimetype='application/json')
-    # 获取Authorization
-    authorization = request.headers.get('Authorization').split("Bearer")[1].strip()
-    # sign = authorization.split(":")[0]
-    timestamp = authorization.split(":")[1]
+    if request.method == 'POST':
+        # 获取Authorization
+        authorization = request.headers.get('Authorization').split("Bearer")[1].strip()
+        sign = authorization.split(":")[0][3:]
+        timestamp = authorization.split(":")[1]
+    else:
+        sign_param = request.args.get('sign', '')
+        if sign_param:
+            decoded_sign = unquote(sign_param)  # 解码URL
+            sign, timestamp = decoded_sign.split(':', 1)
+        else:
+            back = {"code": 412, "error": "未获取到验证信息"}
+            return Response(back, mimetype='application/json')
     t = str(int(time.time()))
     if t > timestamp:
         back = {"code": 412, "error": "时间戳验证失败"}
