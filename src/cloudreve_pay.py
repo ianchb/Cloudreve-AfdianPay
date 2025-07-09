@@ -120,7 +120,7 @@ def verify_signature(request, signature, timestamp):
             "Header": signed_headers_str,
             "Body": body
         }
-        sign_content = json.dumps(sign_raw)
+        sign_content = json.dumps(sign_raw, separators=(',', ':'), ensure_ascii=False)
         sign_content = sign_content.replace("&", "\\u0026") # 转义&符号
     else:
         sign_content = request.path or "/"
