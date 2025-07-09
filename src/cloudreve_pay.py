@@ -1,3 +1,6 @@
+import hmac
+import hashlib
+import base64
 import json
 import os
 import time
@@ -38,6 +41,9 @@ def check():
     if os.path.exists('.env'):
         if os.environ.get('SITE_URL') == "":
             print("SITE_URL未设置,已停止运行")
+            exit()
+        if os.environ.get('COMMUNICATION_KEY') == "":
+            print("COMMUNICATION_KEY未设置,已停止运行")
             exit()
         if os.environ.get('USER_ID') == "":
             print("USER_ID未设置,已停止运行")
@@ -92,6 +98,43 @@ def respond():
     return Response(back, mimetype='application/json')
 
 
+def verify_signature(request, signature, timestamp):
+    communication_key = os.environ.get('COMMUNICATION_KEY', '')
+    current_time = int(time.time())
+    if current_time > int(timestamp):
+        return False, "时间戳验证失败"
+
+    if request.method == 'POST':
+        # 获取X-Cr-前缀的请求头
+        signed_headers = []
+        for key, value in request.headers.items():
+            if key.startswith('X-Cr-'):
+                signed_headers.append(f"{key}={value}")
+        signed_headers.sort()
+        signed_headers_str = "&".join(signed_headers)
+        path = request.path or "/"
+        body = request.get_data(as_text=True)
+
+        sign_raw = {
+            "Path": path,
+            "Header": signed_headers_str,
+            "Body": body
+        }
+        sign_content = json.dumps(sign_raw)
+        sign_content = sign_content.replace("&", "\\u0026") # 转义&符号
+    else:
+        sign_content = request.path or "/"
+
+    sign_content_final = f"{sign_content}:{timestamp}"
+
+    # 签名（HMAC-SHA256）
+    h = hmac.new(communication_key.encode(), sign_content_final.encode(), hashlib.sha256)
+    computed_signature = base64.urlsafe_b64encode(h.digest()).decode()
+    if computed_signature != signature:
+        return False, "签名无效"
+
+    return True, ""
+
 @app.route('/order', methods=['post','get'])
 def order():
     load_dotenv('.env')
@@ -106,20 +149,36 @@ def order():
         return Response(back, mimetype='application/json')
     if request.method == 'POST':
         # 获取Authorization
-        authorization = request.headers.get('Authorization').split("Bearer")[1].strip()
-        sign = authorization.split(":")[0][3:]
-        timestamp = authorization.split(":")[1]
+        authorization = request.headers.get('Authorization', '')
+        if not authorization.startswith("Bearer Cr "):
+            back = {"code": 412, "error": "无效的Authorization头格式"}
+            back = json.dumps(back, ensure_ascii=False)
+            return Response(back, mimetype='application/json')
+
+        signature_part = authorization[len("Bearer Cr "):]
+        parts = signature_part.split(":")
+        if len(parts) != 2:
+            back = {"code": 412, "error": "无效的签名格式"}
+            back = json.dumps(back, ensure_ascii=False)
+            return Response(back, mimetype='application/json')
+        signature, timestamp = parts[0], parts[1]
     else:
         sign_param = request.args.get('sign', '')
-        if sign_param:
-            decoded_sign = unquote(sign_param)  # 解码URL
-            sign, timestamp = decoded_sign.split(':', 1)
-        else:
-            back = {"code": 412, "error": "未获取到验证信息"}
+        if not sign_param:
+            back = {"code": 412, "error": "未获取到签名信息"}
+            back = json.dumps(back, ensure_ascii=False)
             return Response(back, mimetype='application/json')
-    t = str(int(time.time()))
-    if t > timestamp:
-        back = {"code": 412, "error": "时间戳验证失败"}
+        decoded_sign = unquote(sign_param)
+        parts = decoded_sign.split(":")
+        if len(parts) != 2:
+            back = {"code": 412, "error": "URL中无效的签名格式"}
+            back = json.dumps(back, ensure_ascii=False)
+            return Response(back, mimetype='application/json')
+        signature, timestamp = parts[0], parts[1]
+    is_valid, message = verify_signature(request, signature, timestamp)
+    if not is_valid:
+        back = {"code": 412, "error": message}
+        back = json.dumps(back, ensure_ascii=False)
         return Response(back, mimetype='application/json')
     if request.method == 'POST':
         return create_order()
