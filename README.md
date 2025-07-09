@@ -24,6 +24,7 @@ Cloudreve自定义付款渠道-爱发电接口
 
 ```
 SITE_URL="你的网站url，不带斜杠，例如 https://demo.cloudreve.org"
+COMMUNICATION_KEY="你的网站通信密钥"
 USER_ID="你的爱发电user_id"
 TOKEN="你的爱发电api token"
 PORT="5000"# 监听端口，默认5000
@@ -33,6 +34,7 @@ PORT="5000"# 监听端口，默认5000
 
 ```
 SITE_URL="https://demo.cloudreve.org"
+COMMUNICATION_KEY="xxxxxx"
 USER_ID="abcxxxxxxx123"
 TOKEN="aAABBB123xxxxzzz"
 PORT="5000"
@@ -78,7 +80,7 @@ services:
 
 接口地址为： `http://example.com:5000/order`  将 `example.com` 更换为你的域名或IP，点击保存
 
-通信密钥可以随意填写，暂时还没加入签名验证
+通信密钥需要与 COMMUNICATION_KEY 匹配，否则无法通过签名验证
 
 
 
