@@ -38,27 +38,15 @@ app = Flask(__name__)
 # 初始化检查
 def check():
     # 判断.env文件是否存在
-    if os.path.exists('.env'):
-        if os.environ.get('SITE_URL') == "":
-            print("SITE_URL未设置,已停止运行")
-            exit()
-        if os.environ.get('COMMUNICATION_KEY') == "":
-            print("COMMUNICATION_KEY未设置,已停止运行")
-            exit()
-        if os.environ.get('USER_ID') == "":
-            print("USER_ID未设置,已停止运行")
-            exit()
-        if os.environ.get('TOKEN') == "":
-            print("TOKEN未设置,已停止运行")
-            exit()
-        if os.environ.get('PORT') == "":
-            print("PORT未设置,已停止运行")
-            exit()
-        print("初始化检查通过")
-        return
-    else:
+    if not os.path.exists('.env'):
         print("未找到.env文件,已停止运行")
         exit()
+    load_dotenv('.env')
+    for key in ('SITE_URL', 'COMMUNICATION_KEY', 'USER_ID', 'TOKEN', 'PORT'):
+        if not os.environ.get(key):
+            print(f"{key}未设置,已停止运行")
+            exit()
+    print("初始化检查通过")
 
 @app.route('/afdian', methods=['POST'])
 def respond():
@@ -231,13 +219,12 @@ def check_order():
         back = json.dumps(back, ensure_ascii=False)
         return Response(back, mimetype='application/json')
 
-# 初始化检查
+# 初始化检查、载入配置
 check()
 # 设置货币最小单位
 CURRENCY_UNIT = {'USD': 100, 'EUR': 100, 'GBP': 100, 'JPY': 1, 'CNY': 100, 'HKD': 100, 'SGD': 100, 'KRW': 1, 'INR': 100, 'RUB': 100, 'BRL': 100, 'AUD': 100, 'CAD': 100, 'CHF': 100}
 print("Cloudreve Afdian Pay Server\t已启动\nGithub: https://github.com/essesoul/Cloudreve-AfdianPay")
 print("-------------------------")
-load_dotenv('.env')
 port = str(os.getenv('PORT'))
 print("程序运行端口：" + port)
 server = pywsgi.WSGIServer(('0.0.0.0', int(port)), app)
