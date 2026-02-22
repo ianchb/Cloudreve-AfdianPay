@@ -37,10 +37,7 @@ app = Flask(__name__)
 
 # 初始化检查
 def check():
-    # 判断.env文件是否存在
-    if not os.path.exists('.env'):
-        print("未找到.env文件,已停止运行")
-        exit()
+    # .env文件可选，有则加载（不覆盖已有环境变量）
     load_dotenv('.env')
     for key in ('SITE_URL', 'COMMUNICATION_KEY', 'USER_ID', 'TOKEN', 'PORT'):
         if not os.environ.get(key):
