@@ -23,6 +23,7 @@ except:
     print("未找到CurrencyConverter模块")
     exit()
 try:
+    import gevent
     from gevent import pywsgi
 except:
     print("未找到gevent模块")
@@ -34,6 +35,33 @@ except:
     exit()
 app = Flask(__name__)
 
+def notify_worker_loop():
+    print("[INFO] notify worker started")
+    while True:
+        try:
+            now = int(time.time())
+            jobs = afdian.fetch_due_notify_jobs(now)
+            if not jobs:
+                gevent.sleep(1.0)
+                continue
+
+            for job in jobs:
+                order_no = job["order_no"]
+                url = job["notify_url"]
+                attempts = int(job["notify_attempts"] or 0)
+                ok, err = afdian.try_notify_once(url)
+                if ok:
+                    print(f"[INFO] notify success order_no={order_no}")
+                    afdian.mark_notify_success(order_no)
+                else:
+                    attempts_after = attempts + 1
+                    print(f"[WARN] notify failed order_no={order_no} attempts={attempts_after} err={err}")
+                    afdian.mark_notify_failure(order_no, attempts_after, err)
+            # 防止一轮处理过久饿死其他 greenlet
+            gevent.sleep(0)
+        except Exception as e:
+            print(f"[ERROR] notify worker exception: {type(e).__name__}: {e}")
+            gevent.sleep(2.0)
 
 # 初始化检查
 def check():
@@ -62,21 +90,9 @@ def respond():
         amount = raw[1]
     if afd_amount == amount:
         # 订单金额相同
-        # 标记订单为已支付
-        afdian.mark_order_paid(order_no)
-        # 通知网站
-        notify_url = raw[2]
-        url = notify_url
-        # 发送get请求
-        for attempt in range(3):
-            try:
-                resp = requests.get(url)
-                if resp.status_code == 200 and resp.json().get('code') == 0:
-                    break
-            except Exception:
-                if attempt == 2:  # 最后一次重试仍然失败
-                    raise
-                time.sleep(2 ** attempt)
+        # 标记订单为已支付、可回调
+        afdian.mark_order_paid_and_enqueue_notify(order_no)
+
     # json格式化
     back = '{"ec":200,"em":""}'
     json.dumps(back, ensure_ascii=False)
@@ -220,6 +236,8 @@ def check_order():
 check()
 # 设置货币最小单位
 CURRENCY_UNIT = {'USD': 100, 'EUR': 100, 'GBP': 100, 'JPY': 1, 'CNY': 100, 'HKD': 100, 'SGD': 100, 'KRW': 1, 'INR': 100, 'RUB': 100, 'BRL': 100, 'AUD': 100, 'CAD': 100, 'CHF': 100}
+# 启动后台回调worker
+gevent.spawn(notify_worker_loop)
 print("Cloudreve Afdian Pay Server\t已启动\nGithub: https://github.com/essesoul/Cloudreve-AfdianPay")
 print("-------------------------")
 port = str(os.getenv('PORT'))
